@@ -43,7 +43,7 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 
 2. Install required Python packages:
    ```bash
-   pip install flask pillow pytesseract pyautogui numpy
+   pip install flask pillow pytesseract pyautogui numpy psutil
    ```
 
 3. Install Tesseract OCR:

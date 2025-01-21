@@ -1,5 +1,7 @@
 import time
 import threading
+import subprocess
+import psutil
 from flask import Flask, render_template_string
 from PIL import Image, ImageOps
 import numpy as np
@@ -199,7 +201,7 @@ def extract_modules_text_from_image(image):
         return ""
 
 def detection_loop():
-    global last_battle_time, game_state, last_event_result, last_modules_result
+    global last_event_result, last_modules_result, game_state
     screen_width, screen_height = pyautogui.size()
 
     region_left = screen_width - REGION_WIDTH
@@ -217,29 +219,48 @@ def detection_loop():
     gear_top = screen_height - GEAR_REGION_HEIGHT
     gear_bottom = screen_height
 
-    module_right = screen_width  
-    module_left = module_right - MODULE_REGION_WIDTH  
-    module_top = region_bottom + MODULE_OFFSET_DOWN  
+    module_right = screen_width
+    module_left = module_right - MODULE_REGION_WIDTH
+    module_top = region_bottom + MODULE_OFFSET_DOWN
     module_bottom = module_top + MODULE_REGION_HEIGHT
 
     last_battle_time = None
+    last_detection_time = time.time()
 
     while True:
+        if not is_aces_running():
+            log("aces.exe not found. Pausing detection until process is available.", level="WARN")
+            game_state = "Waiting for aces.exe"
+            while not is_aces_running():
+                time.sleep(2)
+            log("aces.exe detected again. Resuming detection.", level="INFO")
+            last_detection_time = time.time()
+
         battle_screenshot = pyautogui.screenshot().crop((battle_left, battle_top, battle_right, battle_bottom))
         battle_text = extract_battle_text_from_image(battle_screenshot).lower()
 
         if "to battle" in battle_text:
             last_battle_time = time.time()
+            last_detection_time = time.time()
             log("Detected 'To Battle!' — assuming Main Menu.")
             game_state = "In Menu"
         else:
-            game_state = "Unknown"
+            if game_state not in ["In Game", "Game Not In Focus"]:
+                game_state = "Unknown"
+
+        gear_screenshot = pyautogui.screenshot().crop((gear_left, gear_top, gear_right, gear_bottom))
+        gear_text = extract_gear_text_from_image(gear_screenshot).lower()
+
+        if fuzzy_contains(gear_text, ["gear", "rpm", "spd", "km/h", "n"]):
+            last_detection_time = time.time()
+
+        if time.time() - last_detection_time > 20:
+            game_state = "Game Not In Focus"
+            time.sleep(1)
+            continue
 
         current_time = time.time()
         if last_battle_time is None or (current_time - last_battle_time > 10):
-            gear_screenshot = pyautogui.screenshot().crop((gear_left, gear_top, gear_right, gear_bottom))
-            gear_text = extract_gear_text_from_image(gear_screenshot).lower()
-
             if fuzzy_contains(gear_text, ["gear", "rpm", "spd", "km/h", "n"]):
                 game_state = "In Game"
                 screenshot = pyautogui.screenshot().crop((region_left, region_top, region_right, region_bottom))
@@ -258,6 +279,7 @@ def detection_loop():
                 log(f"Modules Analysis Result: {modules_result}")
                 last_modules_result = modules_result
 
+                # Sleep depending on detection results
                 if ("No significant events detected" not in result or
                     "No significant modules detected" not in modules_result):
                     time.sleep(4)
@@ -351,7 +373,30 @@ def index():
                                   last_modules_result=last_modules_result,
                                   rows=rows)
 
+def is_tesseract_installed():
+    try:
+        result = subprocess.run(['tesseract', '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+def is_aces_running():
+    for proc in psutil.process_iter(['name']):
+        if proc.info['name'] and proc.info['name'].lower() == 'aces.exe':
+            return True
+    return False
+
 if __name__ == "__main__":
+    # Check if Tesseract is installed
+    if not is_tesseract_installed():
+        print("Tesseract is not installed. Please install it and ensure it's in your PATH.")
+        exit(1)
+
+    print("Waiting for aces.exe to start...")
+    while not is_aces_running():
+        time.sleep(5)
+
+    print("aces.exe detected. Starting detection loop and web server...")
     detection_thread = threading.Thread(target=detection_loop, daemon=True)
     detection_thread.start()
     app.run(host="0.0.0.0", port=5000, debug=False)
