@@ -157,7 +157,8 @@ def analyze_modules_text(extracted_text):
         "Engine": ["engin", "eng"],
         "Transmission": ["transmiss", "trans"],
         "Radiator": ["radiat", "rad"],
-        "Ammo": ["ammo", "amme", "amm"]
+        "Ammo": ["ammo", "amme", "amm"],
+        "Autoloader": ["auto"],
     }
     for module, fragments in module_fragments.items():
         if all(fuzzy_contains(text, [frag]) for frag in fragments):
