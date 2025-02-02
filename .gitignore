@@ -399,3 +399,7 @@ FodyWeavers.xsd
 
 # Ignore environment variables file
 .env
+
+# Ignore Folder static
+static/
+screenshots/

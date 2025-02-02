@@ -11,7 +11,8 @@ from image_processing import (
     extract_battle_text_from_image,
     extract_gear_text_from_image,
     extract_modules_text_from_image,
-    preprocess_image_for_colors
+    preprocess_image_for_colors,
+    preprocess_image_for_gear,
 )
 from analysis import analyze_text, analyze_modules_text
 
@@ -66,7 +67,6 @@ def detection_loop():
         if state.game_state != prev_state and state.game_state == "In Game":
             detection_loop.gear_logged = False
 
-        # Process for aces.exe
         if not is_aces_running():
             log("aces.exe not found. Pausing detection until process is available.", level="WARN", tag="PROCESS")
             state.game_state = "Waiting for aces.exe"
@@ -75,7 +75,7 @@ def detection_loop():
             log("aces.exe detected again. Resuming detection.", level="INFO", tag="PROCESS")
             last_detection_time = time.time()
 
-        # Process battle region (used for main menu detection)
+        # Process battle region (for main menu detection)
         battle_screenshot = pyautogui.screenshot().crop((battle_left, battle_top, battle_right, battle_bottom))
         battle_text = extract_battle_text_from_image(battle_screenshot).lower()
 
@@ -95,24 +95,26 @@ def detection_loop():
         gear_screenshot = pyautogui.screenshot().crop((gear_left, gear_top, gear_right, gear_bottom))
         gear_text = extract_gear_text_from_image(gear_screenshot).lower()
 
-        if fuzzy_contains(gear_text, ["gear", "rpm", "spd", "km/h", "n"]):
+        keywords = ["gear", "rpm", "spd", "km/h"]
+        if any(keyword in gear_text for keyword in keywords):
             last_detection_time = time.time()
             if not detection_loop.gear_logged:
-                # Save raw gear region screenshot
                 raw_gear_filename = f"gear_raw_{int(time.time())}.png"
                 raw_gear_filepath = os.path.join(screenshot_folder, raw_gear_filename)
                 gear_screenshot.save(raw_gear_filepath)
                 raw_gear_link = f"http://localhost:5000/static/screenshots/{raw_gear_filename}"
-                
-                processed_gear = preprocess_image_for_colors(gear_screenshot)
+
+                processed_gear = preprocess_image_for_gear(gear_screenshot)
                 proc_gear_filename = f"gear_proc_{int(time.time())}.png"
                 proc_gear_filepath = os.path.join(screenshot_folder, proc_gear_filename)
                 processed_gear.save(proc_gear_filepath)
                 proc_gear_link = f"http://localhost:5000/static/screenshots/{proc_gear_filename}"
-                
+
                 log(f"In-Game detected. Gear info preview (raw): {raw_gear_link}", tag="GEAR")
                 log(f"In-Game detected. Gear info preview (processed): {proc_gear_link}", tag="GEAR")
                 detection_loop.gear_logged = True
+        else:
+            log("Gear info not detected in OCR output, skipping gear logging.", level="WARN", tag="GEAR")
 
         if time.time() - last_detection_time > 20:
             state.game_state = "Game Not In Focus"
@@ -130,15 +132,12 @@ def detection_loop():
                 result = analyze_text(extracted_text)
                 state.last_event_result = result
 
-                # Only log detailed event info if a significant event occurred
                 if "no significant events detected" not in result.lower():
-                    # Save raw event screenshot for preview
                     raw_filename = f"event_raw_{int(time.time())}.png"
                     raw_filepath = os.path.join(screenshot_folder, raw_filename)
                     screenshot.save(raw_filepath)
                     raw_link = f"http://localhost:5000/static/screenshots/{raw_filename}"
 
-                    # Process the screenshot for colors
                     processed_image = preprocess_image_for_colors(screenshot)
                     proc_filename = f"event_proc_{int(time.time())}.png"
                     proc_filepath = os.path.join(screenshot_folder, proc_filename)
@@ -152,7 +151,6 @@ def detection_loop():
                     log(f"Raw Event Image Preview: {raw_link}", tag="EVENT")
                     log(f"Processed Event Image Preview: {proc_link}", tag="EVENT")
 
-                    # Process module region if event is significant
                     module_screenshot = pyautogui.screenshot().crop((module_left, module_top, module_right, module_bottom))
                     modules_extracted_text = extract_modules_text_from_image(module_screenshot)
                     log(f"Module Region Raw Text:\n{modules_extracted_text}", tag="MODULE")
