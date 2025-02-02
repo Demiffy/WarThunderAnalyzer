@@ -24,21 +24,22 @@ TAG_COLORS = {
     "GEAR": Fore.LIGHTRED_EX,
     "OCR": Fore.LIGHTBLUE_EX,
     "EVENT": Fore.LIGHTMAGENTA_EX,
+    "DISCORD": Fore.LIGHTGREEN_EX,
 }
 
 def log(message, level="INFO", tag=None):
     """
     Timestamped log that stores logs in a global list with colored output.
-
+    
     Parameters:
       - message: The log message to display.
       - level: Log level string (e.g., INFO, WARN, ERROR, DEBUG).
-      - tag: An optional tag to further categorize the log message (e.g., BATTLE, REGION, ANALYSIS, MODULE, PROCESS, EVENT, etc.).
+      - tag: An optional tag to further categorize the log message (e.g., BATTLE, REGION, ANALYSIS, MODULE, PROCESS, EVENT, DISCORD, etc.).
     """
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-
+    
     level_color = LEVEL_COLORS.get(level.upper(), Fore.WHITE)
-
+    
     if tag:
         tag_color = TAG_COLORS.get(tag.upper(), Fore.WHITE)
         formatted_header = f"[{timestamp}] [{level_color}{level}{Style.RESET_ALL}:{tag_color}{tag}{Style.RESET_ALL}]"
@@ -46,10 +47,11 @@ def log(message, level="INFO", tag=None):
     else:
         formatted_header = f"[{timestamp}] [{level_color}{level}{Style.RESET_ALL}]"
         plain_header = f"[{timestamp}] [{level}]"
-
+    
     formatted_message = f"{formatted_header} {message}"
     print(formatted_message)
 
+    # Save a plain (non-colored) version to the log store.
     plain_message = f"{plain_header} {message}"
     log_store.append(plain_message)
     if len(log_store) > 1000:

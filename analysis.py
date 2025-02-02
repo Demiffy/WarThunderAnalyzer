@@ -14,7 +14,7 @@ def analyze_text(extracted_text):
     ricochet_fragments = ["rico", "rochet"]
     non_penetration_fragments = ["non", "-", "penetrat"]
     explosion_fragments = ["explod"]
-    ammo_fragments = ["ammun"]
+    extended_ammo_fragments = ["ammo", "amme", "amm"]
     fuel_fragments = ["fuel"]
 
     if fuzzy_contains(text, fire_fragments):
@@ -36,7 +36,6 @@ def analyze_text(extracted_text):
         events.append("Non-penetration event")
         stats["non_penetrations"] += 1
     if fuzzy_contains(text, explosion_fragments):
-        extended_ammo_fragments = ammo_fragments + ["amme"]
         if fuzzy_contains(text, extended_ammo_fragments) and fuzzy_contains(text, fuel_fragments):
             events.append("Enemy killed by ammunition and fuel explosion")
             stats["ammo_explosions"] += 1
@@ -77,12 +76,16 @@ def analyze_modules_text(extracted_text):
         "Engine": ["engin", "eng"],
         "Transmission": ["transmiss", "trans"],
         "Radiator": ["radiat", "rad"],
-        "Ammo": ["ammo", "amme", "amm"],
+        "Ammo": ["ammo"],
         "Autoloader": ["auto"],
     }
     for module, fragments in module_fragments.items():
-        if all(fuzzy_contains(text, [frag]) for frag in fragments):
-            modules_detected.append(module)
+        if module == "Ammo":
+            if any(fuzzy_contains(text, [frag]) for frag in fragments):
+                modules_detected.append(module)
+        else:
+            if all(fuzzy_contains(text, [frag]) for frag in fragments):
+                modules_detected.append(module)
     if not modules_detected:
         modules_detected.append("No significant modules detected")
     return "; ".join(modules_detected)
