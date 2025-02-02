@@ -21,19 +21,19 @@ def analyze_text(extracted_text):
         events.append("Enemy set on fire")
         stats["fires"] += 1
     if fuzzy_contains(text, crew_fragments):
-        events.append("Enemy killed, Crew knocked out")
+        events.append("Enemy Crew knocked out")
         stats["kills"] += 1
     if fuzzy_contains(text, crit_fragments):
-        events.append("Enemy Crit")
+        events.append("Enemy Critical Hit")
         stats["crits"] += 1
     elif fuzzy_contains(text, hit_fragments):
-        events.append("Enemy Hit (Most likely not critical)")
+        events.append("Enemy Hit")
         stats["hits"] += 1
     if fuzzy_contains(text, ricochet_fragments):
-        events.append("Ricochet occurred")
+        events.append("Ricochet")
         stats["ricochets"] += 1
     if fuzzy_contains(text, non_penetration_fragments):
-        events.append("Non-penetration event")
+        events.append("Non-penetration")
         stats["non_penetrations"] += 1
     if fuzzy_contains(text, explosion_fragments):
         if fuzzy_contains(text, extended_ammo_fragments) and fuzzy_contains(text, fuel_fragments):
