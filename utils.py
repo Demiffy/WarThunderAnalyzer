@@ -1,7 +1,8 @@
-# utils.py
 import time
 import subprocess
 import psutil
+import win32gui
+import win32process
 from colorama import init, Fore, Style
 
 init(autoreset=True)
@@ -28,18 +29,10 @@ TAG_COLORS = {
 }
 
 def log(message, level="INFO", tag=None):
-    """
-    Timestamped log that stores logs in a global list with colored output.
-    
-    Parameters:
-      - message: The log message to display.
-      - level: Log level string (e.g., INFO, WARN, ERROR, DEBUG).
-      - tag: An optional tag to further categorize the log message (e.g., BATTLE, REGION, ANALYSIS, MODULE, PROCESS, EVENT, DISCORD, etc.).
-    """
+    """Timestamped log with colored output."""
     timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-    
     level_color = LEVEL_COLORS.get(level.upper(), Fore.WHITE)
-    
+
     if tag:
         tag_color = TAG_COLORS.get(tag.upper(), Fore.WHITE)
         formatted_header = f"[{timestamp}] [{level_color}{level}{Style.RESET_ALL}:{tag_color}{tag}{Style.RESET_ALL}]"
@@ -47,11 +40,10 @@ def log(message, level="INFO", tag=None):
     else:
         formatted_header = f"[{timestamp}] [{level_color}{level}{Style.RESET_ALL}]"
         plain_header = f"[{timestamp}] [{level}]"
-    
+
     formatted_message = f"{formatted_header} {message}"
     print(formatted_message)
 
-    # Save a plain (non-colored) version to the log store.
     plain_message = f"{plain_header} {message}"
     log_store.append(plain_message)
     if len(log_store) > 1000:
@@ -78,3 +70,18 @@ def is_aces_running():
         if proc.info['name'] and proc.info['name'].lower() == 'aces.exe':
             return True
     return False
+
+def get_foreground_process():
+    """Gets the process name of the currently focused window."""
+    hwnd = win32gui.GetForegroundWindow()
+    if hwnd:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        for proc in psutil.process_iter(['pid', 'name']):
+            if proc.info['pid'] == pid:
+                return proc.info['name'].lower()
+    return None
+
+def is_aces_in_focus():
+    """Checks if 'aces.exe' is the foreground process."""
+    active_process = get_foreground_process()
+    return active_process == "aces.exe"

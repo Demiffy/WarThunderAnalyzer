@@ -5,7 +5,7 @@ import pyautogui
 import os
 
 import state
-from utils import log, fuzzy_contains, is_aces_running
+from utils import log, fuzzy_contains, is_aces_running, is_aces_in_focus
 from image_processing import (
     extract_text_from_image,
     extract_battle_text_from_image,
@@ -26,6 +26,9 @@ GEAR_REGION_HEIGHT = 100
 MODULE_REGION_WIDTH = 200
 MODULE_REGION_HEIGHT = 300
 MODULE_OFFSET_DOWN = 20
+
+_stop_event = threading.Event()
+_detection_thread = None
 
 def detection_loop():
     screen_width, screen_height = pyautogui.size()
@@ -63,17 +66,22 @@ def detection_loop():
     if not hasattr(detection_loop, "gear_logged"):
         detection_loop.gear_logged = False
 
-    while True:
-        if state.game_state != prev_state and state.game_state == "In Game":
-            detection_loop.gear_logged = False
+    while not _stop_event.is_set():
+        if not is_aces_in_focus():
+            if state.game_state != "Game Not In Focus":
+                log("aces.exe is out of focus. Pausing detection.", level="INFO", tag="DETECTION")
+            state.game_state = "Game Not In Focus"
+            time.sleep(2)
+            continue
 
         if not is_aces_running():
             log("aces.exe not found. Pausing detection until process is available.", level="WARN", tag="PROCESS")
             state.game_state = "Waiting for aces.exe"
-            while not is_aces_running():
+            while not is_aces_running() and not _stop_event.is_set():
                 time.sleep(2)
             log("aces.exe detected again. Resuming detection.", level="INFO", tag="PROCESS")
             last_detection_time = time.time()
+            continue
 
         # Process battle region (for main menu detection)
         battle_screenshot = pyautogui.screenshot().crop((battle_left, battle_top, battle_right, battle_bottom))
@@ -172,5 +180,11 @@ def detection_loop():
 
 def start_detection_thread():
     """Start the detection loop in a separate daemon thread."""
-    detection_thread = threading.Thread(target=detection_loop, daemon=True)
-    detection_thread.start()
+    global _detection_thread
+    _stop_event.clear()
+    _detection_thread = threading.Thread(target=detection_loop, daemon=True)
+    _detection_thread.start()
+
+def stop_detection_thread():
+    """Signal the detection thread to stop."""
+    _stop_event.set()
