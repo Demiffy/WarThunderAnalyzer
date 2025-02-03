@@ -1,4 +1,3 @@
-# main.py
 import time
 import sys
 

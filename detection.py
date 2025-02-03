@@ -139,6 +139,7 @@ def detection_loop():
                 extracted_text = extract_text_from_image(screenshot)
                 result = analyze_text(extracted_text)
                 state.last_event_result = result
+                state.last_event_timestamp = time.time()
 
                 if "no significant events detected" not in result.lower():
                     raw_filename = f"event_raw_{int(time.time())}.png"
@@ -165,6 +166,7 @@ def detection_loop():
                     modules_result = analyze_modules_text(modules_extracted_text)
                     log(f"Modules Analysis Result: {modules_result}", tag="MODULE")
                     state.last_modules_result = modules_result
+                    state.last_modules_timestamp = time.time()
                     time.sleep(4)
                 else:
                     time.sleep(1)

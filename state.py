@@ -3,6 +3,8 @@ log_store = []
 game_state = "Unknown"
 last_event_result = ""
 last_modules_result = ""
+last_event_timestamp = 0
+last_modules_timestamp = 0
 
 stats = {
     "hits": 0,
