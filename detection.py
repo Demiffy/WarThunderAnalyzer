@@ -16,9 +16,9 @@ from image_processing import (
 )
 from analysis import analyze_text, analyze_modules_text
 
-# Define region sizes and offsets
+# Define screen regions for detection
 REGION_WIDTH = 450
-REGION_HEIGHT = 250
+REGION_HEIGHT = 50
 BATTLE_REGION_WIDTH = 200
 BATTLE_REGION_HEIGHT = 65
 GEAR_REGION_WIDTH = 250
@@ -36,23 +36,15 @@ def detection_loop():
     # Define screen regions based on screen size
     region_left = screen_width - REGION_WIDTH
     region_top = 0
-    region_right = screen_width
-    region_bottom = REGION_HEIGHT
 
     battle_left = (screen_width - BATTLE_REGION_WIDTH) // 2
     battle_top = 0
-    battle_right = battle_left + BATTLE_REGION_WIDTH
-    battle_bottom = BATTLE_REGION_HEIGHT
 
     gear_left = 0
-    gear_right = GEAR_REGION_WIDTH
     gear_top = screen_height - GEAR_REGION_HEIGHT
-    gear_bottom = screen_height
 
-    module_right = screen_width
-    module_left = module_right - MODULE_REGION_WIDTH
-    module_top = region_bottom + MODULE_OFFSET_DOWN
-    module_bottom = module_top + MODULE_REGION_HEIGHT
+    module_left = screen_width - MODULE_REGION_WIDTH
+    module_top = REGION_HEIGHT + MODULE_OFFSET_DOWN
 
     # Create the screenshots folder if it does not exist
     screenshot_folder = os.path.join("static", "screenshots")
@@ -83,8 +75,7 @@ def detection_loop():
             last_detection_time = time.time()
             continue
 
-        # Process battle region (for main menu detection)
-        battle_screenshot = pyautogui.screenshot().crop((battle_left, battle_top, battle_right, battle_bottom))
+        battle_screenshot = pyautogui.screenshot(region=(battle_left, battle_top, BATTLE_REGION_WIDTH, BATTLE_REGION_HEIGHT))
         battle_text = extract_battle_text_from_image(battle_screenshot).lower()
 
         if "to battle" in battle_text:
@@ -99,8 +90,7 @@ def detection_loop():
             if state.game_state not in ["In Game", "Game Not In Focus"]:
                 state.game_state = "Unknown"
 
-        # Process gear region (RPM/gear info)
-        gear_screenshot = pyautogui.screenshot().crop((gear_left, gear_top, gear_right, gear_bottom))
+        gear_screenshot = pyautogui.screenshot(region=(gear_left, gear_top, GEAR_REGION_WIDTH, GEAR_REGION_HEIGHT))
         gear_text = extract_gear_text_from_image(gear_screenshot).lower()
 
         keywords = ["gear", "rpm", "spd", "km/h"]
@@ -134,8 +124,7 @@ def detection_loop():
         if last_battle_time is None or (current_time - last_battle_time > 10):
             if fuzzy_contains(gear_text, ["gear", "rpm", "spd", "km/h", "n"]):
                 state.game_state = "In Game"
-                # Capture the hit/kill region screenshot
-                screenshot = pyautogui.screenshot().crop((region_left, region_top, region_right, region_bottom))
+                screenshot = pyautogui.screenshot(region=(region_left, region_top, REGION_WIDTH, REGION_HEIGHT))
                 extracted_text = extract_text_from_image(screenshot)
                 result = analyze_text(extracted_text)
                 state.last_event_result = result
@@ -160,7 +149,9 @@ def detection_loop():
                     log(f"Raw Event Image Preview: {raw_link}", tag="EVENT")
                     log(f"Processed Event Image Preview: {proc_link}", tag="EVENT")
 
-                    module_screenshot = pyautogui.screenshot().crop((module_left, module_top, module_right, module_bottom))
+                    state.last_raw_event_snapshot = raw_link
+                    state.last_processed_event_snapshot = proc_link
+                    module_screenshot = pyautogui.screenshot(region=(module_left, module_top, MODULE_REGION_WIDTH, MODULE_REGION_HEIGHT))
                     modules_extracted_text = extract_modules_text_from_image(module_screenshot)
                     log(f"Module Region Raw Text:\n{modules_extracted_text}", tag="MODULE")
                     modules_result = analyze_modules_text(modules_extracted_text)
@@ -169,14 +160,14 @@ def detection_loop():
                     state.last_modules_timestamp = time.time()
                     time.sleep(4)
                 else:
-                    time.sleep(1)
+                    time.sleep(0.5)
             else:
                 log("Gear info not detected, skipping hit/kill detection.", level="WARN", tag="GEAR")
                 state.game_state = "Unknown"
-                time.sleep(1)
+                time.sleep(0.5)
         else:
             log("Waiting due to recent 'To Battle!' detection...", level="INFO", tag="BATTLE")
-            time.sleep(1)
+            time.sleep(0.5)
 
         prev_state = state.game_state
 
