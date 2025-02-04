@@ -92,7 +92,12 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
    http://localhost:5000
    ```
 
-3. View real-time updates, logs, and statistics in the web interface.
+ 3. Open another browser tab and navigate to in order to see Rangefinder adjustment UI:
+ ```
+ http://localhost:5001
+ ```
+
+4. View real-time updates, logs, and statistics in the web interface.
 
 ## How It Works
 
