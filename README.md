@@ -83,19 +83,19 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 ## Usage
 
 1. Run the Python script:
-   ```bash
-   python main.py
+  ```bash
+  python main.py
    ```
-
+   
 2. Open your browser and navigate to:
-   ```
-   http://localhost:5000
-   ```
+  ```
+  http://localhost:5000
+  ```
 
  3. Open another browser tab and navigate to in order to see Rangefinder adjustment UI:
- ```
- http://localhost:5001
- ```
+   ```
+   http://localhost:5001
+   ```
 
 4. View real-time updates, logs, and statistics in the web interface.
 
