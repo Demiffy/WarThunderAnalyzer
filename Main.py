@@ -1,13 +1,14 @@
 import time
 import sys
+import threading
 
 from utils import is_tesseract_installed, is_aces_running, is_aces_in_focus
 from detection import start_detection_thread, stop_detection_thread
 from server import start_server
 from discord_rpc import start_discord_rpc
+import rangefinder_logic
 
 def main():
-    # Check if Tesseract is installed
     if not is_tesseract_installed():
         print("Tesseract is not installed. Please install it and ensure it's in your PATH.")
         sys.exit(1)
@@ -21,9 +22,13 @@ def main():
         print("aces.exe is running but not in focus. Waiting...")
         time.sleep(2)
 
-    print("aces.exe is in focus. Starting detection, Discord RPC and web server...")
+    print("aces.exe is in focus. Starting detection, Discord RPC, grid rangefinder and web server...")
     start_detection_thread()
     start_discord_rpc()
+
+    rangefinder_thread = threading.Thread(target=rangefinder_logic.start_rangefinder, daemon=True)
+    rangefinder_thread.start()
+
     start_server()
 
     try:

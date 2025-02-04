@@ -1,4 +1,3 @@
-
 # WarThunderAnalyzer
 
 WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in War Thunder. It uses OCR (Optical Character Recognition) to detect and log specific in-game events, track session statistics, and provide a web-based dashboard for real-time updates.
@@ -8,6 +7,7 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 - **Real-Time Detection**:
   - Detects and logs hits, critical hits, kills, ricochets, fires, and explosions in real time.
   - Identifies specific module damage (e.g., tracks, engine, fuel tank).
+  - Detects the in-game map name automatically using OCR.
 
 - **Statistics Tracking**:
   - Tracks hits, crits, kills, fires, ricochets, non-penetrations, ammo explosions, and fuel explosions.
@@ -15,13 +15,30 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 
 - **Game State Detection**:
   - Recognizes whether the player is in the main menu, in-game, or in an unknown state.
+  - Automatically pauses detection when War Thunder is out of focus and resumes when it is refocused.
 
 - **Web-Based Dashboard**:
   - Displays game state, recent logs, and session statistics in a clean, responsive interface.
   - Highlights statistic changes in real time.
+  - Includes a **rangefinder grid adjustment tool** for accurate distance estimation.
 
 - **Logging**:
   - Logs all detected events with timestamps for easy debugging and session review.
+  - Limits redundant logging to avoid excessive console clutter.
+
+## Rangefinder Grid Features
+
+- **Automatic Map Recognition**:
+  - Uses OCR to detect the in-game map name once the "To Battle!" text disappears.
+  - Waits indefinitely until a valid map name is detected.
+
+- **Grid Overlay**:
+  - Captures the minimap grid area and overlays an infinite grid.
+  - Supports multiple maps with configurable grid size and offsets.
+  - Allows fine-tuning of grid alignment via a web-based UI.
+
+- **Focus Handling**:
+  - Pauses grid updates when the game is out of focus and resumes upon refocus.
 
 ## Requirements
 
@@ -32,6 +49,7 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
   - pytesseract
   - pyautogui
   - numpy
+  - OpenCV
 
 ## Installation
 
@@ -43,7 +61,7 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 
 2. Install required Python packages:
    ```bash
-   pip install flask pillow pytesseract pyautogui numpy psutil
+   pip install flask pillow pytesseract pyautogui numpy opencv-python
    ```
 
 3. Install Tesseract OCR:
@@ -66,7 +84,7 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 
 1. Run the Python script:
    ```bash
-   python app.py
+   python main.py
    ```
 
 2. Open your browser and navigate to:
@@ -92,6 +110,12 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 4. **Web Dashboard**:
    - Built using Flask, the dashboard refreshes automatically every second.
    - Displays the current game state, detailed statistics, and a log of recent events.
+   - Allows adjusting the rangefinder grid offsets for more accurate distance estimation.
+
+5. **Grid Capture & Rangefinder**:
+   - Automatically detects the map name using OCR.
+   - Waits until a valid map name is detected before initializing grid settings.
+   - Provides a web UI to adjust grid alignment and offsets.
 
 ## Screenshots
 
@@ -102,3 +126,11 @@ WarThunderAnalyzer is a Python-based tool designed to analyze in-game events in 
 - The accuracy of OCR depends on the in-game font, resolution, and Tesseract configuration.
 - Requires War Thunder to run in a windowed or borderless fullscreen mode for proper region detection.
 - The tool may need adjustments for non-default UI settings or resolutions.
+- The rangefinder grid requires known map configurations to work correctly.
+
+## Future Improvements
+
+- Add more map configurations.
+- Improve OCR accuracy with better preprocessing techniques.
+
+---
