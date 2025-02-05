@@ -42,7 +42,6 @@ grid_offset_y = 0
 latest_ocr_text = ""
 latest_cell_size_m = None
 
-
 # Directories for saving screenshots
 DIR_GRID = os.path.join("static", "screenshots", "grid")
 DIR_OCR2 = os.path.join("static", "screenshots", "ocr2")
@@ -140,7 +139,7 @@ def capture_loop():
         latest_grid_filename = f"screenshots/grid/{grid_filename}"
         cleanup_directory_by_count(DIR_GRID, max_files=10)
 
-        # ---  OCR region capture for cell size and preview images ---
+        # --- OCR region capture for cell size and preview images ---
         if not cell_size_locked:
             try:
                 new_ocr_img = pyautogui.screenshot(region=OCR_REGION2)
@@ -180,6 +179,11 @@ def capture_loop():
 def ocr_detection_loop():
     global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, cell_size_locked
     while True:
+        if state.statistics_open:
+            log("Statistics open; pausing minimap name detection.", level="INFO", tag="OCR")
+            time.sleep(2)
+            continue
+
         if state.game_state == "In Menu":
             if valid_map_detected:
                 log("To Battle text detected; clearing active configuration.", level="INFO", tag="RANGE")
