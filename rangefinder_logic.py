@@ -30,8 +30,7 @@ current_map = None
 valid_map_detected = False
 active_config = None
 latest_grid_filename = None
-latest_minimap_ocr_original = None
-latest_minimap_ocr_processed = None
+latest_minimap_ocr_image = "screenshots/minimap_ocr/tracked_target.png"
 grid_offset_x = 0
 grid_offset_y = 0
 latest_ocr_text = ""
@@ -65,19 +64,12 @@ def cleanup_directory_by_count(directory, max_files=10):
             log(f"Error deleting {f}: {e}", level="ERROR", tag="RANGE")
 
 def ocr_map_name(region):
-    """Capture the specified region and extract the map name using OCR from the original image."""
     ocr_img = pyautogui.screenshot(region=region)
     ocr_gray = ocr_img.convert("L")
     text = pytesseract.image_to_string(ocr_gray, lang='eng')
     return text.strip()
 
 def draw_infinite_grid(img, cell_period, offset_x, offset_y):
-    """
-    Draw an infinite grid over the image.
-    Grid lines are drawn every 'cell_period' pixels.
-    The grid is shifted by the provided offsets.
-    Lines are drawn with a thickness of 1.
-    """
     h, w = img.shape[:2]
     n_min = math.floor((-offset_x) / cell_period)
     n_max = math.ceil((w - offset_x) / cell_period)
@@ -93,9 +85,7 @@ def draw_infinite_grid(img, cell_period, offset_x, offset_y):
 
 # ----- Capture Loop -----
 def capture_loop():
-    global latest_grid_filename, latest_minimap_ocr_original, latest_minimap_ocr_processed
-    global grid_offset_x, grid_offset_y, active_config, current_map
-    global capture_paused, config_logged, latest_cell_size_m
+    global latest_grid_filename, grid_offset_x, grid_offset_y, active_config, current_map, latest_cell_size_m
 
     sct = mss.mss()
 
@@ -103,30 +93,14 @@ def capture_loop():
         if not is_aces_in_focus():
             if not capture_paused:
                 log("Game out of focus; pausing grid capture...", level="INFO", tag="RANGE")
-                capture_paused = True
             time.sleep(0.5)
             continue
-        else:
-            if capture_paused:
-                log("Game in focus; resuming grid capture.", level="INFO", tag="RANGE")
-                capture_paused = False
-                config_logged = False
 
         if state.statistics_open:
-            if not capture_paused:
-                log("Statistics open; pausing grid capture...", level="INFO", tag="RANGE")
-                capture_paused = True
             time.sleep(0.5)
             continue
-        else:
-            if capture_paused and not state.statistics_open and is_aces_in_focus():
-                log("Statistics closed; resuming grid capture.", level="INFO", tag="RANGE")
-                capture_paused = False
 
         if state.game_state == "In Menu":
-            if not capture_paused:
-                log("Main Menu detected; pausing grid capture and resetting map config.", level="INFO", tag="RANGE")
-                capture_paused = True
             valid_map_detected = False
             active_config = None
             current_map = None
@@ -138,10 +112,7 @@ def capture_loop():
             time.sleep(0.5)
             continue
 
-        if not config_logged:
-            log(f"[{current_map}] Using cell_block: {active_config.get('cell_block', 56)} with offsets ({grid_offset_x}, {grid_offset_y})", level="INFO", tag="RANGE")
-            config_logged = True
-
+        # Capture grid region.
         grid_left, grid_top, grid_width, grid_height = GRID_REGION
         monitor = {"left": grid_left, "top": grid_top, "width": grid_width, "height": grid_height}
         timestamp = int(time.time())
@@ -191,14 +162,9 @@ RANGEFINDER_HTML = """
                 if(data.grid) {
                     document.getElementById('grid_img').src = '/static/' + data.grid + '?t=' + new Date().getTime();
                 }
-                if(data.minimap_ocr_original_image) {
-                    document.getElementById('minimap_ocr_original_img').src = '/static/' + data.minimap_ocr_original_image + '?t=' + new Date().getTime();
-                }
-                if(data.minimap_ocr_processed_image) {
-                    document.getElementById('minimap_ocr_processed_img').src = '/static/' + data.minimap_ocr_processed_image + '?t=' + new Date().getTime();
-                }
+                // Reference the output image from Minimap_player.py.
+                document.getElementById('minimap_ocr_processed_img').src = '/static/' + "screenshots/minimap_ocr/tracked_target.png" + '?t=' + new Date().getTime();
                 document.getElementById('offset_line').innerText = "Current grid offset: (" + data.offset_x + ", " + data.offset_y + ")";
-                document.getElementById('final_offset').innerText = "offset: (" + data.offset_x + ", " + data.offset_y + ")";
                 document.getElementById('current_map').innerText = "Current map: " + data.current_map;
                 document.getElementById('ocr_text').innerText = "Minimap OCR Text: " + data.ocr_text;
                 document.getElementById('cell_size').innerText = "Cell size (m): " + (data.cell_size !== null ? data.cell_size : "N/A");
@@ -237,11 +203,7 @@ RANGEFINDER_HTML = """
                 <img id="grid_img" class="screenshot" src="/static/{{ grid }}" alt="Grid Screenshot">
             </div>
             <div class="col-md-4 img-container">
-                <h3>Minimap OCR Original Preview</h3>
-                <img id="minimap_ocr_original_img" class="screenshot" src="/static/{{ minimap_ocr_original_image }}" alt="Minimap OCR Original Screenshot">
-            </div>
-            <div class="col-md-4 img-container">
-                <h3>Minimap OCR Processed Preview</h3>
+                <h3>Minimap Target Output</h3>
                 <img id="minimap_ocr_processed_img" class="screenshot" src="/static/{{ minimap_ocr_processed_image }}" alt="Minimap OCR Processed Screenshot">
             </div>
         </div>
@@ -253,7 +215,6 @@ RANGEFINDER_HTML = """
             </div>
             <div class="col-md-6">
                 <p id="offset_line">Current grid offset: (0, 0)</p>
-                <p id="final_offset">offset: (0, 0)</p>
             </div>
         </div>
         <div class="row control-container">
@@ -276,12 +237,6 @@ RANGEFINDER_HTML = """
             </div>
             <div class="col-md-6 text-center">
                 <button onclick="bypassOCR()">Bypass OCR and Default to Frozen Pass</button>
-            </div>
-        </div>
-        <div class="row control-container">
-            <div class="col-md-12 text-center">
-                <h3>Final Offset String (copy this into your map config):</h3>
-                <p id="final_offset">offset: (0, 0)</p>
             </div>
         </div>
     </div>

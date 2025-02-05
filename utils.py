@@ -27,6 +27,8 @@ TAG_COLORS = {
     "OCR": Fore.LIGHTBLUE_EX,
     "EVENT": Fore.LIGHTMAGENTA_EX,
     "DISCORD": Fore.LIGHTGREEN_EX,
+    "MINIMAP": Fore.LIGHTYELLOW_EX,
+    "RANGE": Fore.LIGHTCYAN_EX,
 }
 
 def log(message, level="INFO", tag=None):
