@@ -2,6 +2,7 @@ import os
 import math
 import time
 import threading
+import re
 import pyautogui
 import cv2
 import numpy as np
@@ -11,40 +12,51 @@ import state
 from utils import is_aces_in_focus, log
 
 # Global grid region
-GRID_REGION = (1473, 637, 432, 432)  # (left, top, width, height)
+GRID_REGION = (1473, 635, 432, 432)  # (left, top, width, height)
 
 # Map configurations
 map_configs = {
     "Poland": {
-        "grid_size_m": 350,
         "cell_block": 56,  # 54 interior + 2 border = 56 pixels
         "offset": (1, -3)
     },
     "Frozen Pass": {
-        "grid_size_m": 150,
         "cell_block": 61,  # 59 interior + 2 border = 61 pixels
         "offset": (1, -3)
     }
 }
 
-# OCR region for map name detection
+# OCR regions
 OCR_REGION = (900, 380, 500, 30)
+OCR_REGION2 = (1707, 1037, 200, 30)
 
 # Global variables
 current_map = None
 valid_map_detected = False
 active_config = None
 latest_grid_filename = None
+latest_ocr2_filename = None
+latest_ocr2_processed_filename = None
 grid_offset_x = 0
 grid_offset_y = 0
+latest_ocr_text = ""
+latest_cell_size_m = None
 
+
+# Directories for saving screenshots
 DIR_GRID = os.path.join("static", "screenshots", "grid")
+DIR_OCR2 = os.path.join("static", "screenshots", "ocr2")
 os.makedirs(DIR_GRID, exist_ok=True)
+os.makedirs(DIR_OCR2, exist_ok=True)
 
 # Flags
 capture_paused = False
 ocr_paused = False
 config_logged = False
+cell_size_locked = False
+
+# Custom Tesseract configuration
+TESS_CONFIG = '--psm 7 -c tessedit_char_whitelist=0123456789.'
 
 # ----- Helper Functions -----
 def cleanup_directory_by_count(directory, max_files=10):
@@ -88,7 +100,9 @@ def draw_infinite_grid(img, cell_period, offset_x, offset_y):
 
 # ----- Capture Loop -----
 def capture_loop():
-    global latest_grid_filename, grid_offset_x, grid_offset_y, active_config, current_map, capture_paused, config_logged
+    global latest_grid_filename, latest_ocr2_filename, latest_ocr2_processed_filename
+    global grid_offset_x, grid_offset_y, active_config, current_map
+    global capture_paused, config_logged, latest_ocr_text, latest_cell_size_m, cell_size_locked
     while True:
         if not is_aces_in_focus():
             if not capture_paused:
@@ -112,6 +126,7 @@ def capture_loop():
                 level="INFO", tag="RANGE")
             config_logged = True
 
+        # Capture grid region and draw grid
         grid_left, grid_top, grid_width, grid_height = GRID_REGION
         cell_period = active_config.get("cell_block", 56)
         timestamp = int(time.time())
@@ -124,11 +139,46 @@ def capture_loop():
         cv2.imwrite(grid_filepath, grid_bgr)
         latest_grid_filename = f"screenshots/grid/{grid_filename}"
         cleanup_directory_by_count(DIR_GRID, max_files=10)
+
+        # ---  OCR region capture for cell size and preview images ---
+        if not cell_size_locked:
+            try:
+                new_ocr_img = pyautogui.screenshot(region=OCR_REGION2)
+                ocr2_filename = f"ocr2_{timestamp}.png"
+                ocr2_filepath = os.path.join(DIR_OCR2, ocr2_filename)
+                new_ocr_img.save(ocr2_filepath)
+                latest_ocr2_filename = f"screenshots/ocr2/{ocr2_filename}"
+
+                ocr_bgr = np.array(new_ocr_img)
+                mask = cv2.inRange(ocr_bgr, (0, 0, 0), (50, 50, 50))
+                processed = cv2.bitwise_not(mask)
+
+                processed_filename = f"ocr2_processed_{timestamp}.png"
+                processed_filepath = os.path.join(DIR_OCR2, processed_filename)
+                cv2.imwrite(processed_filepath, processed)
+                latest_ocr2_processed_filename = f"screenshots/ocr2/{processed_filename}"
+
+                ocr_result = pytesseract.image_to_string(processed, lang='eng', config=TESS_CONFIG).strip()
+                latest_ocr_text = ocr_result
+                match = re.search(r'(\d+(\.\d+)?)', ocr_result)
+                if match:
+                    value = float(match.group(1))
+                    if value >= 100:
+                        latest_cell_size_m = value
+                        cell_size_locked = True
+                        log(f"Detected solid cell size: {latest_cell_size_m} m (locked)", level="INFO", tag="OCR2")
+                    else:
+                        log(f"Detected cell size ({value} m) is below threshold", level="WARN", tag="OCR2")
+                else:
+                    log(f"No valid cell size found in OCR region: '{ocr_result}'", level="WARN", tag="OCR2")
+            except Exception as e:
+                log(f"Error in new OCR region capture: {e}", level="ERROR", tag="OCR2")
+
         time.sleep(2)
 
 # ----- OCR Detection Loop -----
 def ocr_detection_loop():
-    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused
+    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, cell_size_locked
     while True:
         if state.game_state == "In Menu":
             if valid_map_detected:
@@ -136,6 +186,7 @@ def ocr_detection_loop():
                 valid_map_detected = False
                 active_config = None
                 current_map = None
+                cell_size_locked = False
             if not ocr_paused:
                 ocr_paused = True
             time.sleep(2)
@@ -174,7 +225,7 @@ RANGEFINDER_HTML = """
         body { margin: 20px; background-color: #2b2b2b; color: #ddd; }
         .screenshot { max-width: 90%; border: 2px solid #555; }
         button, select { padding: 10px 20px; font-size: 16px; margin: 5px; }
-        #offset_line, #final_offset, #current_map { font-size: 18px; margin: 10px; }
+        #offset_line, #final_offset, #current_map, #ocr_text, #cell_size { font-size: 18px; margin: 10px; }
     </style>
     <script>
         function fetchLatest() {
@@ -184,9 +235,17 @@ RANGEFINDER_HTML = """
                 if(data.grid) {
                     document.getElementById('grid_img').src = '/static/' + data.grid + '?t=' + new Date().getTime();
                 }
+                if(data.ocr2_image) {
+                    document.getElementById('ocr2_img').src = '/static/' + data.ocr2_image + '?t=' + new Date().getTime();
+                }
+                if(data.ocr2_processed_image) {
+                    document.getElementById('ocr2_processed_img').src = '/static/' + data.ocr2_processed_image + '?t=' + new Date().getTime();
+                }
                 document.getElementById('offset_line').innerText = "Current grid offset: (" + data.offset_x + ", " + data.offset_y + ")";
                 document.getElementById('final_offset').innerText = "offset: (" + data.offset_x + ", " + data.offset_y + ")";
                 document.getElementById('current_map').innerText = "Current map: " + data.current_map;
+                document.getElementById('ocr_text').innerText = "OCR Region2 Text: " + data.ocr_text;
+                document.getElementById('cell_size').innerText = "Detected cell size (m): " + (data.cell_size !== null ? data.cell_size : "N/A");
             })
             .catch(err => console.error("Error fetching latest:", err));
         }
@@ -219,6 +278,12 @@ RANGEFINDER_HTML = """
         <p id="current_map">Current map: {{ current_map }}</p>
         <h2>Grid Region</h2>
         <img id="grid_img" class="screenshot" src="/static/{{ grid }}" alt="Grid Screenshot">
+        <h2>OCR Region2 Original Preview</h2>
+        <img id="ocr2_img" class="screenshot" src="/static/{{ ocr2_image }}" alt="OCR2 Region Screenshot">
+        <h2>OCR Region2 Processed Preview</h2>
+        <img id="ocr2_processed_img" class="screenshot" src="/static/{{ ocr2_processed_image }}" alt="OCR2 Processed Screenshot">
+        <p id="ocr_text">OCR Region2 Text: </p>
+        <p id="cell_size">Detected cell size (m): N/A</p>
         <h2>Adjust Grid Offsets</h2>
         <p id="offset_line">Current grid offset: (0, 0)</p>
         <button onclick="adjustOffset('x', 1)">Increase Offset X</button>
@@ -246,6 +311,8 @@ RANGEFINDER_HTML = """
 def index():
     return render_template_string(RANGEFINDER_HTML,
                                   grid=latest_grid_filename if latest_grid_filename else "",
+                                  ocr2_image=latest_ocr2_filename if latest_ocr2_filename else "",
+                                  ocr2_processed_image=latest_ocr2_processed_filename if latest_ocr2_processed_filename else "",
                                   maps=list(map_configs.keys()),
                                   current_map=current_map if current_map else "None")
 
@@ -253,9 +320,13 @@ def index():
 def latest():
     return jsonify({
         "grid": latest_grid_filename,
+        "ocr2_image": latest_ocr2_filename,
+        "ocr2_processed_image": latest_ocr2_processed_filename,
         "offset_x": grid_offset_x,
         "offset_y": grid_offset_y,
-        "current_map": current_map if current_map else "None"
+        "current_map": current_map if current_map else "None",
+        "ocr_text": latest_ocr_text,
+        "cell_size": latest_cell_size_m
     })
 
 @app.route("/adjust_offset")
@@ -283,7 +354,7 @@ def set_map():
         grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
         valid_map_detected = True
         message = (f"Map changed to {map_name}. New settings: grid_region: {GRID_REGION}, "
-                   f"grid_size_m: {active_config['grid_size_m']}, cell_block: {active_config['cell_block']}, "
+                   f"cell_block: {active_config['cell_block']}, "
                    f"offset: {active_config['offset']}.")
     else:
         message = f"Map '{map_name}' not found."
@@ -306,7 +377,7 @@ def start_rangefinder():
     if not valid_map_detected:
         log("No valid map detected by OCR; waiting indefinitely for a valid map.", level="WARN", tag="RANGE")
     else:
-        log(f"Using settings for {current_map}: grid_size_m: {active_config['grid_size_m']}, cell_block: {active_config['cell_block']}", level="INFO", tag="RANGE")
+        log(f"Using settings for {current_map}: cell_block: {active_config['cell_block']}", level="INFO", tag="RANGE")
     capture_thread = threading.Thread(target=capture_loop, daemon=True)
     capture_thread.start()
     app.run(host="0.0.0.0", port=5001, debug=False)
