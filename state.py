@@ -22,5 +22,5 @@ stats = {
 
 prev_stats = stats.copy()
 
-# Shared flag used by both modules to signal when the statistics region is open.
 statistics_open = False
+main_menu_open = False

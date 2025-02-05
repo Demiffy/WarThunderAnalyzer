@@ -1,3 +1,4 @@
+# detection.py
 import time
 import threading
 import pyautogui
@@ -139,6 +140,13 @@ def detection_loop():
                 state.last_event_result = result
                 state.last_event_timestamp = time.time()
 
+                main_menu_screenshot = pyautogui.screenshot(region=MAIN_MENU_REGION)
+                main_menu_text = pytesseract.image_to_string(main_menu_screenshot, lang="eng").strip()
+                main_menu_keywords = ["usa", "germany", "ussr", "great britain", "japan", "china", "italy", "france", "sweden", "israel"]
+                if any(keyword in main_menu_text.lower() for keyword in main_menu_keywords):
+                    log("Main Menu keywords detected in main menu region. Setting game state to In Menu.", level="INFO", tag="MAIN_MENU")
+                    state.game_state = "In Menu"
+
                 if "no significant events detected" not in result.lower():
                     raw_filename = f"event_raw_{int(time.time())}.png"
                     raw_filepath = os.path.join(screenshot_folder, raw_filename)
@@ -189,7 +197,7 @@ def statistics_check_loop():
     stats_screenshot_folder = os.path.join("static", "screenshots")
     prev_stats_state = None
     while not _stop_event.is_set():
-        if state.game_state != "In Menu":
+        if is_aces_in_focus():
             stat_screenshot = pyautogui.screenshot(region=STAT_REGION)
             stat_filename = f"stats_{int(time.time())}.png"
             stat_filepath = os.path.join(stats_screenshot_folder, stat_filename)
@@ -210,24 +218,27 @@ def main_menu_check_loop():
     Continuously check a designated 'Main Menu' region.
     If the OCR result from that region contains any of the country keywords,
     and the state has changed since the last check, set state.main_menu_open accordingly and log a screenshot URL.
+    Additionally, if main menu keywords are detected, set state.game_state to "In Menu".
     """
     main_menu_screenshot_folder = os.path.join("static", "screenshots")
     main_menu_keywords = ["usa", "germany", "ussr", "great britain", "japan", "china", "italy", "france", "sweden", "israel"]
     prev_main_menu_state = None
     while not _stop_event.is_set():
-        main_menu_screenshot = pyautogui.screenshot(region=MAIN_MENU_REGION)
-        main_menu_filename = f"main_menu_{int(time.time())}.png"
-        main_menu_filepath = os.path.join(main_menu_screenshot_folder, main_menu_filename)
-        main_menu_screenshot.save(main_menu_filepath)
-        main_menu_text = pytesseract.image_to_string(main_menu_screenshot, lang="eng").strip()
-        new_state = any(keyword in main_menu_text.lower() for keyword in main_menu_keywords)
-        if prev_main_menu_state is None or new_state != prev_main_menu_state:
-            state.main_menu_open = new_state
-            if new_state:
-                log(f"Main Menu detected. Screenshot URL: http://localhost:5000/static/screenshots/{main_menu_filename}", tag="MAIN_MENU")
-            else:
-                log(f"Main Menu no longer detected. Screenshot URL: http://localhost:5000/static/screenshots/{main_menu_filename}", tag="MAIN_MENU")
-            prev_main_menu_state = new_state
+        if is_aces_in_focus():
+            main_menu_screenshot = pyautogui.screenshot(region=MAIN_MENU_REGION)
+            main_menu_filename = f"main_menu_{int(time.time())}.png"
+            main_menu_filepath = os.path.join(main_menu_screenshot_folder, main_menu_filename)
+            main_menu_screenshot.save(main_menu_filepath)
+            main_menu_text = pytesseract.image_to_string(main_menu_screenshot, lang="eng").strip()
+            new_state = any(keyword in main_menu_text.lower() for keyword in main_menu_keywords)
+            if prev_main_menu_state is None or new_state != prev_main_menu_state:
+                state.main_menu_open = new_state
+                if new_state:
+                    log(f"Main Menu detected. Screenshot URL: http://localhost:5000/static/screenshots/{main_menu_filename}", tag="MAIN_MENU")
+                    state.game_state = "In Menu"
+                else:
+                    log(f"Main Menu no longer detected. Screenshot URL: http://localhost:5000/static/screenshots/{main_menu_filename}", tag="MAIN_MENU")
+                prev_main_menu_state = new_state
         time.sleep(2)
 
 def ocr_detection_loop():
@@ -286,6 +297,7 @@ def start_detection_thread():
     _main_menu_thread.start()
 
 def stop_detection_thread():
+    """Signal the detection loops (statistics and main menu checks) to stop."""
     _stop_event.set()
 
 def main():

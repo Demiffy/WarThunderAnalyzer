@@ -1,3 +1,4 @@
+# rangefinder_logic.py
 import os
 import math
 import time
@@ -10,21 +11,15 @@ import pytesseract
 from flask import Flask, render_template_string, jsonify, request
 import state
 from utils import is_aces_in_focus, log
+import json
 
 # Global grid region
 GRID_REGION = (1473, 635, 432, 432)  # (left, top, width, height)
 
-# Map configurations
-map_configs = {
-    "Poland": {
-        "cell_block": 56,  # 54 interior + 2 border = 56 pixels
-        "offset": (1, -3)
-    },
-    "Frozen Pass": {
-        "cell_block": 61,  # 59 interior + 2 border = 61 pixels
-        "offset": (1, -3)
-    }
-}
+# Load map configurations from JSON file.
+CONFIGS_PATH = os.path.join(os.path.dirname(__file__), "map_configs.json")
+with open(CONFIGS_PATH, "r") as f:
+    map_configs = json.load(f)
 
 # OCR regions
 OCR_REGION = (900, 380, 500, 30)
@@ -115,6 +110,17 @@ def capture_loop():
                 capture_paused = False
                 config_logged = False
 
+        if state.statistics_open:
+            if not capture_paused:
+                log("Statistics open; pausing grid capture...", level="INFO", tag="RANGE")
+                capture_paused = True
+            time.sleep(1)
+            continue
+        else:
+            if capture_paused and not state.statistics_open and is_aces_in_focus():
+                log("Statistics closed; resuming grid capture.", level="INFO", tag="RANGE")
+                capture_paused = False
+
         if active_config is None:
             log("No active configuration set; waiting for valid map via OCR or manual selection...", level="INFO", tag="RANGE")
             time.sleep(2)
@@ -173,47 +179,6 @@ def capture_loop():
             except Exception as e:
                 log(f"Error in new OCR region capture: {e}", level="ERROR", tag="OCR2")
 
-        time.sleep(2)
-
-# ----- OCR Detection Loop -----
-def ocr_detection_loop():
-    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, cell_size_locked
-    while True:
-        if state.statistics_open:
-            log("Statistics open; pausing minimap name detection.", level="INFO", tag="OCR")
-            time.sleep(2)
-            continue
-
-        if state.game_state == "In Menu":
-            if valid_map_detected:
-                log("To Battle text detected; clearing active configuration.", level="INFO", tag="RANGE")
-                valid_map_detected = False
-                active_config = None
-                current_map = None
-                cell_size_locked = False
-            if not ocr_paused:
-                ocr_paused = True
-            time.sleep(2)
-            continue
-        else:
-            if ocr_paused:
-                log("Game in focus; resuming OCR detection.", level="INFO", tag="OCR")
-                ocr_paused = False
-
-        if is_aces_in_focus():
-            log("Game in focus; running OCR to detect map name...", level="INFO", tag="OCR")
-            map_text = ocr_map_name(OCR_REGION)
-            log(f"OCR Result: {map_text}", level="DEBUG", tag="OCR")
-            for map_name in map_configs.keys():
-                if map_name.lower() in map_text.lower():
-                    current_map = map_name
-                    valid_map_detected = True
-                    active_config = map_configs[map_name]
-                    grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
-                    log(f"Detected map: {current_map}", level="INFO", tag="OCR")
-                    break
-            if not valid_map_detected:
-                log("Map name not recognized. Retrying in 2 seconds...", level="WARN", tag="OCR")
         time.sleep(2)
 
 # ----- Flask Web Server for Rangefinder -----
@@ -372,6 +337,50 @@ def bypass():
     active_config = map_configs["Frozen Pass"]
     grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
     return jsonify({"message": "Bypassed OCR. Defaulted to Frozen Pass."})
+
+def ocr_detection_loop():
+    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, cell_size_locked
+    while True:
+        if state.statistics_open:
+            log("Statistics open; pausing minimap name detection.", level="INFO", tag="OCR")
+            time.sleep(2)
+            continue
+        if state.main_menu_open:
+            log("Main Menu detected; pausing minimap name detection.", level="INFO", tag="OCR")
+            time.sleep(2)
+            continue
+
+        if state.game_state == "In Menu":
+            if valid_map_detected:
+                log("To Battle text detected; clearing active configuration.", level="INFO", tag="RANGE")
+                valid_map_detected = False
+                active_config = None
+                current_map = None
+                cell_size_locked = False
+            if not ocr_paused:
+                ocr_paused = True
+            time.sleep(2)
+            continue
+        else:
+            if ocr_paused:
+                log("Game in focus; resuming OCR detection.", level="INFO", tag="OCR")
+                ocr_paused = False
+
+        if is_aces_in_focus():
+            log("Game in focus; running OCR to detect map name...", level="INFO", tag="OCR")
+            map_text = ocr_map_name(OCR_REGION)
+            log(f"OCR Result: {map_text}", level="DEBUG", tag="OCR")
+            for map_name in map_configs.keys():
+                if map_name.lower() in map_text.lower():
+                    current_map = map_name
+                    valid_map_detected = True
+                    active_config = map_configs[map_name]
+                    grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
+                    log(f"Detected map: {current_map}", level="INFO", tag="OCR")
+                    break
+            if not valid_map_detected:
+                log("Map name not recognized. Retrying in 2 seconds...", level="WARN", tag="OCR")
+        time.sleep(2)
 
 def start_rangefinder():
     ocr_thread = threading.Thread(target=ocr_detection_loop, daemon=True)
