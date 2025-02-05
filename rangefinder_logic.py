@@ -412,7 +412,7 @@ def ocr_detection_loop():
                 log(f"Error capturing minimap OCR images: {e}", level="ERROR", tag="OCR")
                 map_text = ""
             log(f"OCR Result (from processed image): {map_text}", level="DEBUG", tag="OCR")
-            for map_name in map_configs.keys():
+            for map_name in sorted(map_configs.keys(), key=lambda x: -len(x)):
                 if map_name.lower() in map_text.lower():
                     current_map = map_name
                     valid_map_detected = True
