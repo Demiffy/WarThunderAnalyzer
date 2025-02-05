@@ -24,15 +24,14 @@ with open(CONFIGS_PATH, "r") as f:
 
 # OCR regions
 OCR_REGION = (900, 380, 500, 30)
-OCR_REGION2 = (1707, 1037, 200, 30)
 
 # Global variables
 current_map = None
 valid_map_detected = False
 active_config = None
 latest_grid_filename = None
-latest_ocr2_filename = None
-latest_ocr2_processed_filename = None
+latest_minimap_ocr_original = None
+latest_minimap_ocr_processed = None
 grid_offset_x = 0
 grid_offset_y = 0
 latest_ocr_text = ""
@@ -40,15 +39,14 @@ latest_cell_size_m = None
 
 # Directories for saving screenshots
 DIR_GRID = os.path.join("static", "screenshots", "grid")
-DIR_OCR2 = os.path.join("static", "screenshots", "ocr2")
+DIR_MINIMAP_OCR = os.path.join("static", "screenshots", "minimap_ocr")
 os.makedirs(DIR_GRID, exist_ok=True)
-os.makedirs(DIR_OCR2, exist_ok=True)
+os.makedirs(DIR_MINIMAP_OCR, exist_ok=True)
 
 # Flags
 capture_paused = False
 ocr_paused = False
 config_logged = False
-cell_size_locked = False
 
 # Custom Tesseract configuration
 TESS_CONFIG = '--psm 7 -c tessedit_char_whitelist=0123456789.'
@@ -67,7 +65,7 @@ def cleanup_directory_by_count(directory, max_files=10):
             log(f"Error deleting {f}: {e}", level="ERROR", tag="RANGE")
 
 def ocr_map_name(region):
-    """Capture the specified region and extract the map name using OCR."""
+    """Capture the specified region and extract the map name using OCR from the original image."""
     ocr_img = pyautogui.screenshot(region=region)
     ocr_gray = ocr_img.convert("L")
     text = pytesseract.image_to_string(ocr_gray, lang='eng')
@@ -95,9 +93,10 @@ def draw_infinite_grid(img, cell_period, offset_x, offset_y):
 
 # ----- Capture Loop -----
 def capture_loop():
-    global latest_grid_filename, latest_ocr2_filename, latest_ocr2_processed_filename
+    global latest_grid_filename, latest_minimap_ocr_original, latest_minimap_ocr_processed
     global grid_offset_x, grid_offset_y, active_config, current_map
-    global capture_paused, config_logged, latest_ocr_text, latest_cell_size_m, cell_size_locked
+    global capture_paused, config_logged, latest_cell_size_m
+
     sct = mss.mss()
 
     while True:
@@ -131,7 +130,6 @@ def capture_loop():
             valid_map_detected = False
             active_config = None
             current_map = None
-            cell_size_locked = False
             time.sleep(0.5)
             continue
 
@@ -141,8 +139,7 @@ def capture_loop():
             continue
 
         if not config_logged:
-            log(f"[{current_map}] Using cell_period: {active_config.get('cell_block', 56)} with offsets ({grid_offset_x}, {grid_offset_y})",
-                level="INFO", tag="RANGE")
+            log(f"[{current_map}] Using cell_block: {active_config.get('cell_block', 56)} with offsets ({grid_offset_x}, {grid_offset_y})", level="INFO", tag="RANGE")
             config_logged = True
 
         grid_left, grid_top, grid_width, grid_height = GRID_REGION
@@ -164,39 +161,9 @@ def capture_loop():
         latest_grid_filename = f"screenshots/grid/{grid_filename}"
         cleanup_directory_by_count(DIR_GRID, max_files=10)
 
-        # --- OCR region capture for cell size and preview images ---
-        if not cell_size_locked:
-            try:
-                new_ocr_img = pyautogui.screenshot(region=OCR_REGION2)
-                ocr2_filename = f"ocr2_{timestamp}.png"
-                ocr2_filepath = os.path.join(DIR_OCR2, ocr2_filename)
-                new_ocr_img.save(ocr2_filepath)
-                latest_ocr2_filename = f"screenshots/ocr2/{ocr2_filename}"
+        if "cell_size_m" in active_config:
+            latest_cell_size_m = active_config["cell_size_m"]
 
-                ocr_bgr = np.array(new_ocr_img)
-                mask = cv2.inRange(ocr_bgr, (0, 0, 0), (50, 50, 50))
-                processed = cv2.bitwise_not(mask)
-
-                processed_filename = f"ocr2_processed_{timestamp}.png"
-                processed_filepath = os.path.join(DIR_OCR2, processed_filename)
-                cv2.imwrite(processed_filepath, processed)
-                latest_ocr2_processed_filename = f"screenshots/ocr2/{processed_filename}"
-
-                ocr_result = pytesseract.image_to_string(processed, lang='eng', config=TESS_CONFIG).strip()
-                latest_ocr_text = ocr_result
-                match = re.search(r'(\d+(\.\d+)?)', ocr_result)
-                if match:
-                    value = float(match.group(1))
-                    if value >= 100:
-                        latest_cell_size_m = value
-                        cell_size_locked = True
-                        log(f"Detected solid cell size: {latest_cell_size_m} m (locked)", level="INFO", tag="OCR2")
-                    else:
-                        log(f"Detected cell size ({value} m) is below threshold", level="WARN", tag="OCR2")
-                else:
-                    log(f"No valid cell size found in OCR region: '{ocr_result}'", level="WARN", tag="OCR2")
-            except Exception as e:
-                log(f"Error in new OCR region capture: {e}", level="ERROR", tag="OCR2")
         time.sleep(0.5)
 
 # ----- Flask Web Server for Rangefinder -----
@@ -210,9 +177,11 @@ RANGEFINDER_HTML = """
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/darkly/bootstrap.min.css">
     <style>
         body { margin: 20px; background-color: #2b2b2b; color: #ddd; }
-        .screenshot { max-width: 90%; border: 2px solid #555; }
+        .screenshot { width: 100%; border: 2px solid #555; }
+        .img-container { padding: 10px; }
+        .control-container { margin-top: 20px; }
         button, select { padding: 10px 20px; font-size: 16px; margin: 5px; }
-        #offset_line, #final_offset, #current_map, #ocr_text, #cell_size { font-size: 18px; margin: 10px; }
+        #offset_line, #final_offset, #current_map, #ocr_text, #cell_size { font-size: 18px; margin: 10px 0; }
     </style>
     <script>
         function fetchLatest() {
@@ -222,17 +191,17 @@ RANGEFINDER_HTML = """
                 if(data.grid) {
                     document.getElementById('grid_img').src = '/static/' + data.grid + '?t=' + new Date().getTime();
                 }
-                if(data.ocr2_image) {
-                    document.getElementById('ocr2_img').src = '/static/' + data.ocr2_image + '?t=' + new Date().getTime();
+                if(data.minimap_ocr_original_image) {
+                    document.getElementById('minimap_ocr_original_img').src = '/static/' + data.minimap_ocr_original_image + '?t=' + new Date().getTime();
                 }
-                if(data.ocr2_processed_image) {
-                    document.getElementById('ocr2_processed_img').src = '/static/' + data.ocr2_processed_image + '?t=' + new Date().getTime();
+                if(data.minimap_ocr_processed_image) {
+                    document.getElementById('minimap_ocr_processed_img').src = '/static/' + data.minimap_ocr_processed_image + '?t=' + new Date().getTime();
                 }
                 document.getElementById('offset_line').innerText = "Current grid offset: (" + data.offset_x + ", " + data.offset_y + ")";
                 document.getElementById('final_offset').innerText = "offset: (" + data.offset_x + ", " + data.offset_y + ")";
                 document.getElementById('current_map').innerText = "Current map: " + data.current_map;
-                document.getElementById('ocr_text').innerText = "OCR Region2 Text: " + data.ocr_text;
-                document.getElementById('cell_size').innerText = "Detected cell size (m): " + (data.cell_size !== null ? data.cell_size : "N/A");
+                document.getElementById('ocr_text').innerText = "Minimap OCR Text: " + data.ocr_text;
+                document.getElementById('cell_size').innerText = "Cell size (m): " + (data.cell_size !== null ? data.cell_size : "N/A");
             })
             .catch(err => console.error("Error fetching latest:", err));
         }
@@ -260,35 +229,61 @@ RANGEFINDER_HTML = """
     </script>
 </head>
 <body>
-    <div class="container">
-        <h1 class="my-4">Rangefinder Grid Adjustment</h1>
-        <p id="current_map">Current map: {{ current_map }}</p>
-        <h2>Grid Region</h2>
-        <img id="grid_img" class="screenshot" src="/static/{{ grid }}" alt="Grid Screenshot">
-        <h2>OCR Region2 Original Preview</h2>
-        <img id="ocr2_img" class="screenshot" src="/static/{{ ocr2_image }}" alt="OCR2 Region Screenshot">
-        <h2>OCR Region2 Processed Preview</h2>
-        <img id="ocr2_processed_img" class="screenshot" src="/static/{{ ocr2_processed_image }}" alt="OCR2 Processed Screenshot">
-        <p id="ocr_text">OCR Region2 Text: </p>
-        <p id="cell_size">Detected cell size (m): N/A</p>
-        <h2>Adjust Grid Offsets</h2>
-        <p id="offset_line">Current grid offset: (0, 0)</p>
-        <button onclick="adjustOffset('x', 1)">Increase Offset X</button>
-        <button onclick="adjustOffset('x', -1)">Decrease Offset X</button>
-        <button onclick="adjustOffset('y', 1)">Increase Offset Y</button>
-        <button onclick="adjustOffset('y', -1)">Decrease Offset Y</button>
-        <h2>Change Map</h2>
-        <select id="map_select">
-            {% for map in maps %}
-                <option value="{{ map }}" {% if map == current_map %}selected{% endif %}>{{ map }}</option>
-            {% endfor %}
-        </select>
-        <button onclick="changeMap()">Set Map</button>
-        <br>
-        <button onclick="bypassOCR()">Bypass OCR and Default to Frozen Pass</button>
-        <br><br>
-        <h3>Final Offset String (copy this into your map config):</h3>
-        <p id="final_offset">offset: (0, 0)</p>
+    <div class="container-fluid">
+        <h1 class="my-4 text-center">Rangefinder Grid Adjustment</h1>
+        <div class="row">
+            <div class="col-md-4 img-container">
+                <h3>Grid Region</h3>
+                <img id="grid_img" class="screenshot" src="/static/{{ grid }}" alt="Grid Screenshot">
+            </div>
+            <div class="col-md-4 img-container">
+                <h3>Minimap OCR Original Preview</h3>
+                <img id="minimap_ocr_original_img" class="screenshot" src="/static/{{ minimap_ocr_original_image }}" alt="Minimap OCR Original Screenshot">
+            </div>
+            <div class="col-md-4 img-container">
+                <h3>Minimap OCR Processed Preview</h3>
+                <img id="minimap_ocr_processed_img" class="screenshot" src="/static/{{ minimap_ocr_processed_image }}" alt="Minimap OCR Processed Screenshot">
+            </div>
+        </div>
+        <div class="row control-container">
+            <div class="col-md-6">
+                <p id="current_map">Current map: {{ current_map }}</p>
+                <p id="ocr_text">Minimap OCR Text: </p>
+                <p id="cell_size">Cell size (m): N/A</p>
+            </div>
+            <div class="col-md-6">
+                <p id="offset_line">Current grid offset: (0, 0)</p>
+                <p id="final_offset">offset: (0, 0)</p>
+            </div>
+        </div>
+        <div class="row control-container">
+            <div class="col-md-12 text-center">
+                <button onclick="adjustOffset('x', 1)">Increase Offset X</button>
+                <button onclick="adjustOffset('x', -1)">Decrease Offset X</button>
+                <button onclick="adjustOffset('y', 1)">Increase Offset Y</button>
+                <button onclick="adjustOffset('y', -1)">Decrease Offset Y</button>
+            </div>
+        </div>
+        <div class="row control-container">
+            <div class="col-md-6 text-center">
+                <select id="map_select" class="form-control">
+                    {% for map in maps %}
+                        <option value="{{ map }}" {% if map == current_map %}selected{% endif %}>{{ map }}</option>
+                    {% endfor %}
+                </select>
+                <br>
+                <button onclick="changeMap()">Set Map</button>
+            </div>
+            <div class="col-md-6 text-center">
+                <button onclick="bypassOCR()">Bypass OCR and Default to Frozen Pass</button>
+            </div>
+        </div>
+        <div class="row control-container">
+            <div class="col-md-12 text-center">
+                <h3>Final Offset String (copy this into your map config):</h3>
+                <p id="final_offset">offset: (0, 0)</p>
+            </div>
+        </div>
     </div>
 </body>
 </html>
@@ -298,8 +293,8 @@ RANGEFINDER_HTML = """
 def index():
     return render_template_string(RANGEFINDER_HTML,
                                   grid=latest_grid_filename if latest_grid_filename else "",
-                                  ocr2_image=latest_ocr2_filename if latest_ocr2_filename else "",
-                                  ocr2_processed_image=latest_ocr2_processed_filename if latest_ocr2_processed_filename else "",
+                                  minimap_ocr_original_image=latest_minimap_ocr_original if latest_minimap_ocr_original else "",
+                                  minimap_ocr_processed_image=latest_minimap_ocr_processed if latest_minimap_ocr_processed else "",
                                   maps=list(map_configs.keys()),
                                   current_map=current_map if current_map else "None")
 
@@ -307,8 +302,8 @@ def index():
 def latest():
     return jsonify({
         "grid": latest_grid_filename,
-        "ocr2_image": latest_ocr2_filename,
-        "ocr2_processed_image": latest_ocr2_processed_filename,
+        "minimap_ocr_original_image": latest_minimap_ocr_original,
+        "minimap_ocr_processed_image": latest_minimap_ocr_processed,
         "offset_x": grid_offset_x,
         "offset_y": grid_offset_y,
         "current_map": current_map if current_map else "None",
@@ -333,31 +328,36 @@ def adjust_offset():
 
 @app.route("/set_map")
 def set_map():
-    global current_map, grid_offset_x, grid_offset_y, active_config, valid_map_detected
+    global current_map, grid_offset_x, grid_offset_y, active_config, valid_map_detected, latest_cell_size_m
     map_name = request.args.get("map", "").strip()
     if map_name in map_configs:
         current_map = map_name
         active_config = map_configs[map_name]
         grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
         valid_map_detected = True
+        if "cell_size_m" in active_config:
+            latest_cell_size_m = active_config["cell_size_m"]
         message = (f"Map changed to {map_name}. New settings: grid_region: {GRID_REGION}, "
                    f"cell_block: {active_config['cell_block']}, "
-                   f"offset: {active_config['offset']}.")
+                   f"offset: {active_config['offset']}, cell_size_m: {latest_cell_size_m}.")
     else:
         message = f"Map '{map_name}' not found."
     return jsonify({"message": message})
 
 @app.route("/bypass")
 def bypass():
-    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y
+    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, latest_cell_size_m
     current_map = "Frozen Pass"
     valid_map_detected = True
     active_config = map_configs["Frozen Pass"]
     grid_offset_x, grid_offset_y = active_config.get("offset", (0, 0))
+    if "cell_size_m" in active_config:
+        latest_cell_size_m = active_config["cell_size_m"]
     return jsonify({"message": "Bypassed OCR. Defaulted to Frozen Pass."})
 
 def ocr_detection_loop():
-    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, cell_size_locked
+    global current_map, valid_map_detected, active_config, grid_offset_x, grid_offset_y, ocr_paused, latest_ocr_text
+    global latest_minimap_ocr_original, latest_minimap_ocr_processed
     while True:
         if state.statistics_open:
             log("Statistics open; pausing minimap name detection.", level="INFO", tag="OCR")
@@ -374,7 +374,6 @@ def ocr_detection_loop():
                 valid_map_detected = False
                 active_config = None
                 current_map = None
-                cell_size_locked = False
             if not ocr_paused:
                 ocr_paused = True
             time.sleep(2)
@@ -386,8 +385,33 @@ def ocr_detection_loop():
 
         if is_aces_in_focus():
             log("Game in focus; running OCR to detect map name...", level="INFO", tag="OCR")
-            map_text = ocr_map_name(OCR_REGION)
-            log(f"OCR Result: {map_text}", level="DEBUG", tag="OCR")
+            timestamp = int(time.time())
+            try:
+                minimap_ocr_img = pyautogui.screenshot(region=OCR_REGION)
+                minimap_ocr_original_filename = f"minimap_ocr_original_{timestamp}.png"
+                minimap_ocr_original_filepath = os.path.join(DIR_MINIMAP_OCR, minimap_ocr_original_filename)
+                minimap_ocr_img.save(minimap_ocr_original_filepath)
+                latest_minimap_ocr_original = f"screenshots/minimap_ocr/{minimap_ocr_original_filename}"
+
+                minimap_np = np.array(minimap_ocr_img)
+                target = np.array([230, 206, 120], dtype=np.uint8)
+                tolerance = 60
+                diff = cv2.absdiff(minimap_np, target)
+                distance = np.linalg.norm(diff, axis=2)
+                processed = np.where(distance < tolerance, 0, 255).astype(np.uint8)
+                if len(processed.shape) == 3:
+                    processed = cv2.cvtColor(processed, cv2.COLOR_RGB2GRAY)
+                minimap_ocr_processed_filename = f"minimap_ocr_processed_{timestamp}.png"
+                minimap_ocr_processed_filepath = os.path.join(DIR_MINIMAP_OCR, minimap_ocr_processed_filename)
+                cv2.imwrite(minimap_ocr_processed_filepath, processed)
+                latest_minimap_ocr_processed = f"screenshots/minimap_ocr/{minimap_ocr_processed_filename}"
+
+                map_text = pytesseract.image_to_string(processed, lang='eng').strip()
+                latest_ocr_text = map_text
+            except Exception as e:
+                log(f"Error capturing minimap OCR images: {e}", level="ERROR", tag="OCR")
+                map_text = ""
+            log(f"OCR Result (from processed image): {map_text}", level="DEBUG", tag="OCR")
             for map_name in map_configs.keys():
                 if map_name.lower() in map_text.lower():
                     current_map = map_name

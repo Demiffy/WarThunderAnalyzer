@@ -1,10 +1,22 @@
 {
     "Poland": {
       "cell_block": 56,
-      "offset": [1, -3]
+      "offset": [1, -3],
+      "cell_size_m": 100
     },
     "Frozen Pass": {
       "cell_block": 61,
-      "offset": [1, -3]
+      "offset": [1, -3],
+      "cell_size_m": 120
+    },
+    "[Domination #1] Fire arc": {
+      "cell_block": 60,
+      "offset": [-1, -3],
+      "cell_size_m": 110
+    },
+    "[Domination #2] Fire arc": {
+      "cell_block": 57,
+      "offset": [0, 0],
+      "cell_size_m": 90
     }
   }
