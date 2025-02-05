@@ -7,7 +7,6 @@ from detection import start_detection_thread, stop_detection_thread
 from server import start_server
 from discord_rpc import start_discord_rpc
 import rangefinder_logic
-from minimap_tracking import start_minimap_player  # Make sure the file is named minimap_player.py
 
 def main():
     if not is_tesseract_installed():
@@ -27,13 +26,9 @@ def main():
     start_detection_thread()
     start_discord_rpc()
 
-    # Start the rangefinder logic (which serves the grid and other images) in a thread.
+    # Start the rangefinder logic
     rangefinder_thread = threading.Thread(target=rangefinder_logic.start_rangefinder, daemon=True)
     rangefinder_thread.start()
-
-    # Start the minimap tracking. It writes its output image to a shared file that rangefinder_logic serves.
-    minimap_thread = threading.Thread(target=start_minimap_player, daemon=True)
-    minimap_thread.start()
 
     start_server()
 

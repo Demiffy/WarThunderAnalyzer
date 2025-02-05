@@ -23,5 +23,20 @@
       "cell_block": 57,
       "offset": [1, 0],
       "cell_size_m": 500
+    },
+    "Sinai": {
+      "cell_block": 58,
+      "offset": [-1, -3],
+      "cell_size_m": 200
+    },
+    "Iberian Castle": {
+      "cell_block": 59,
+      "offset": [0, -2],
+      "cell_size_m": 170
+    },
+    "Japan": {
+      "cell_block": 61,
+      "offset": [0, -2],
+      "cell_size_m": 225
     }
   }
