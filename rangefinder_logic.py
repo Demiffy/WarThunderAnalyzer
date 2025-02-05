@@ -1,4 +1,3 @@
-# rangefinder_logic.py
 import os
 import math
 import time
@@ -12,6 +11,8 @@ from flask import Flask, render_template_string, jsonify, request
 import state
 from utils import is_aces_in_focus, log
 import json
+import mss
+import mss.tools
 
 # Global grid region
 GRID_REGION = (1473, 635, 432, 432)  # (left, top, width, height)
@@ -97,12 +98,14 @@ def capture_loop():
     global latest_grid_filename, latest_ocr2_filename, latest_ocr2_processed_filename
     global grid_offset_x, grid_offset_y, active_config, current_map
     global capture_paused, config_logged, latest_ocr_text, latest_cell_size_m, cell_size_locked
+    sct = mss.mss()
+
     while True:
         if not is_aces_in_focus():
             if not capture_paused:
                 log("Game out of focus; pausing grid capture...", level="INFO", tag="RANGE")
                 capture_paused = True
-            time.sleep(1)
+            time.sleep(0.5)
             continue
         else:
             if capture_paused:
@@ -114,16 +117,27 @@ def capture_loop():
             if not capture_paused:
                 log("Statistics open; pausing grid capture...", level="INFO", tag="RANGE")
                 capture_paused = True
-            time.sleep(1)
+            time.sleep(0.5)
             continue
         else:
             if capture_paused and not state.statistics_open and is_aces_in_focus():
                 log("Statistics closed; resuming grid capture.", level="INFO", tag="RANGE")
                 capture_paused = False
 
+        if state.game_state == "In Menu":
+            if not capture_paused:
+                log("Main Menu detected; pausing grid capture and resetting map config.", level="INFO", tag="RANGE")
+                capture_paused = True
+            valid_map_detected = False
+            active_config = None
+            current_map = None
+            cell_size_locked = False
+            time.sleep(0.5)
+            continue
+
         if active_config is None:
             log("No active configuration set; waiting for valid map via OCR or manual selection...", level="INFO", tag="RANGE")
-            time.sleep(2)
+            time.sleep(0.5)
             continue
 
         if not config_logged:
@@ -131,14 +145,19 @@ def capture_loop():
                 level="INFO", tag="RANGE")
             config_logged = True
 
-        # Capture grid region and draw grid
         grid_left, grid_top, grid_width, grid_height = GRID_REGION
-        cell_period = active_config.get("cell_block", 56)
+        monitor = {"left": grid_left, "top": grid_top, "width": grid_width, "height": grid_height}
         timestamp = int(time.time())
-        grid_img = pyautogui.screenshot(region=(grid_left, grid_top, grid_width, grid_height))
-        grid_np = np.array(grid_img)
-        grid_bgr = cv2.cvtColor(grid_np, cv2.COLOR_RGB2BGR)
-        grid_bgr = draw_infinite_grid(grid_bgr, cell_period, grid_offset_x, grid_offset_y)
+        try:
+            sct_img = sct.grab(monitor)
+            grid_np = np.array(sct_img)
+            grid_bgr = cv2.cvtColor(grid_np, cv2.COLOR_BGRA2BGR)
+        except Exception as e:
+            log(f"Error capturing grid region: {e}", level="ERROR", tag="RANGE")
+            time.sleep(0.5)
+            continue
+
+        grid_bgr = draw_infinite_grid(grid_bgr, active_config.get("cell_block", 56), grid_offset_x, grid_offset_y)
         grid_filename = f"grid_{timestamp}.png"
         grid_filepath = os.path.join(DIR_GRID, grid_filename)
         cv2.imwrite(grid_filepath, grid_bgr)
@@ -178,8 +197,7 @@ def capture_loop():
                     log(f"No valid cell size found in OCR region: '{ocr_result}'", level="WARN", tag="OCR2")
             except Exception as e:
                 log(f"Error in new OCR region capture: {e}", level="ERROR", tag="OCR2")
-
-        time.sleep(2)
+        time.sleep(0.5)
 
 # ----- Flask Web Server for Rangefinder -----
 app = Flask(__name__, static_url_path='/static', static_folder='static')
@@ -352,7 +370,7 @@ def ocr_detection_loop():
 
         if state.game_state == "In Menu":
             if valid_map_detected:
-                log("To Battle text detected; clearing active configuration.", level="INFO", tag="RANGE")
+                log("In Menu: clearing active configuration.", level="INFO", tag="RANGE")
                 valid_map_detected = False
                 active_config = None
                 current_map = None
