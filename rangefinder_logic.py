@@ -150,7 +150,6 @@ def write_placeholder():
     placeholder = np.zeros((GRID_REGION[3], GRID_REGION[2], 3), dtype=np.uint8)
     placeholder = overlay_text(placeholder, "Tracking paused", color=(0, 0, 255), position=(10, 30))
     cv2.imwrite(OUTPUT_IMAGE_PATH, placeholder)
-    log("Wrote placeholder image (Tracking paused).", level="INFO", tag="COMBINED")
 
 # -----------------------------------------------------------
 # Combined Capture Loop (Tracking + Grid Overlay)

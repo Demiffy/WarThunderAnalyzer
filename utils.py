@@ -1,9 +1,10 @@
-#utils.py
 import time
 import subprocess
 import psutil
 import win32gui
 import win32process
+import screeninfo
+import sys
 from colorama import init, Fore, Style
 
 init(autoreset=True)
@@ -71,6 +72,7 @@ def is_aces_running():
     """Check if the aces.exe process is running."""
     for proc in psutil.process_iter(['name']):
         if proc.info['name'] and proc.info['name'].lower() == 'aces.exe':
+            log("aces.exe is running.", level="INFO", tag="PROCESS")
             return True
     return False
 
@@ -88,3 +90,39 @@ def is_aces_in_focus():
     """Checks if 'aces.exe' is the foreground process."""
     active_process = get_foreground_process()
     return active_process == "aces.exe"
+
+def check_resolution():
+    """Check if the player's resolution is Full HD (1920x1080)."""
+    monitors = screeninfo.get_monitors()
+    for monitor in monitors:
+        if monitor.width == 1920 and monitor.height == 1080:
+            log("Resolution is 1920x1080. Proceeding...", level="INFO", tag="PROCESS")
+            return True
+
+    log("ERROR: Your screen resolution is not 1920x1080. The program cannot continue.", level="ERROR", tag="PROCESS")
+    sys.exit(1)
+
+def wait_for_aces():
+    """Wait for aces.exe to start and gain focus."""
+    log("Waiting for aces.exe to start...", level="INFO", tag="PROCESS")
+    while not is_aces_running():
+        time.sleep(5)
+
+    log("aces.exe detected. Waiting for focus...", level="INFO", tag="PROCESS")
+    while not is_aces_in_focus():
+        log("aces.exe is running but not in focus. Waiting...", level="WARN", tag="PROCESS")
+        time.sleep(2)
+
+    log("aces.exe is in focus. Proceeding...", level="INFO", tag="PROCESS")
+
+def handle_focus_loss(stop_func, start_func):
+    """Handles focus loss and restart logic for detection."""
+    while True:
+        if not is_aces_in_focus():
+            log("Game lost focus; stopping detection.", level="WARN", tag="PROCESS")
+            stop_func()
+            while not is_aces_in_focus():
+                time.sleep(1)
+            log("Game regained focus; restarting detection.", level="INFO", tag="PROCESS")
+            start_func()
+        time.sleep(1)
