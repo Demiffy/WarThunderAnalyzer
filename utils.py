@@ -4,6 +4,7 @@ import psutil
 import win32gui
 import win32process
 import screeninfo
+from screeninfo import get_monitors
 import sys
 from colorama import init, Fore, Style
 
@@ -93,13 +94,14 @@ def is_aces_in_focus():
 
 def check_resolution():
     """Check if the player's resolution is Full HD (1920x1080)."""
-    monitors = screeninfo.get_monitors()
+    monitors = get_monitors()
     for monitor in monitors:
         if monitor.width == 1920 and monitor.height == 1080:
             log("Resolution is 1920x1080. Proceeding...", level="INFO", tag="PROCESS")
             return True
 
-    log("ERROR: Your screen resolution is not 1920x1080. The program cannot continue.", level="ERROR", tag="PROCESS")
+    resolutions = ", ".join(f"{m.width}x{m.height}" for m in monitors) if monitors else "unknown"
+    log(f"Your screen resolution: {resolutions} doesn't match the supported resolution (1920x1080). The program cannot continue.", level="ERROR", tag="PROCESS")
     sys.exit(1)
 
 def wait_for_aces():
